@@ -1,0 +1,18 @@
+{
+  "id": "./index.html",
+  "name": "Inkwell - Private Diary",
+  "short_name": "Inkwell",
+  "description": "A private diary and journal. Write every day with moods, tags, photos and prompts, look back with a calendar and On this day, lock it with a PIN and print it as a book. Offline, no account, no subscription.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f5f3fa",
+  "theme_color": "#5b3fa0",
+  "categories": ["lifestyle", "productivity"],
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

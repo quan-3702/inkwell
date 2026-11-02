@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inkwell – Private Diary</title>
+  <meta name="description" content="A private diary and journal for Windows. Write every day with moods, tags, photos and prompts, look back with a calendar and 'On this day', lock it with a PIN and print your journal as a book. Offline, no account, no subscription.">
+  <meta name="theme-color" content="#5b3fa0">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="lock" class="lock" hidden>
+    <div class="lock-box">
+      <img src="icon-192.png" width="64" height="64" alt="">
+      <h1>Inkwell</h1>
+      <p id="lockMsg">Enter your PIN</p>
+      <div class="dots" id="pinDots"></div>
+      <div class="keypad" id="keypad"></div>
+      <button id="forgotBtn" class="linkbtn">Forgot PIN?</button>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="brand"><img src="icon-192.png" alt="" width="30" height="30"><span>Inkwell</span></div>
+    <select id="journalPick" title="Journal"></select>
+    <div class="search"><input id="searchIn" type="search" placeholder="Search your diary…"></div>
+    <div class="top-btns">
+      <button id="lockBtn" class="tb" title="Lock now" hidden>🔒</button>
+      <button id="moreBtn" class="tb">☰ More</button>
+      <button id="proBtn" class="pro-btn" hidden>★ Get Pro</button>
+    </div>
+    <div id="menu" class="menu" hidden>
+      <button id="newJournalBtn">＋ New journal ★</button>
+      <button id="renameJournalBtn">✎ Rename this journal</button>
+      <button id="delJournalBtn" class="danger">🗑 Delete this journal…</button>
+      <hr>
+      <button id="printBtn">📖 Print or save as a book (PDF) ★</button>
+      <button id="txtBtn">📝 Export as text (.txt)</button>
+      <button id="docBtn">📄 Export to Word (.doc) ★</button>
+      <hr>
+      <button id="pinBtn">🔒 PIN lock…</button>
+      <button id="themeBtn">🎨 Paper &amp; font…</button>
+      <button id="backupBtn">💾 Back up everything</button>
+      <button id="restoreBtn2">📂 Restore a backup…</button>
+      <hr>
+      <a href="help.html" target="_blank" rel="noopener">❓ How to use Inkwell</a>
+      <a href="why.html" target="_blank" rel="noopener">💡 Why Inkwell – compare</a>
+      <a href="mailto:thequan03072002@gmail.com?subject=Inkwell%20feedback">✉ Feedback &amp; support</a>
+    </div>
+    <input id="fileIn" type="file" hidden>
+  </header>
+
+  <main class="pane">
+    <nav class="side">
+      <button id="newBtn" class="primary big">✍️ Write today</button>
+      <div class="nav" id="nav">
+        <button data-v="timeline" class="on">📜 Timeline</button>
+        <button data-v="calendar">📅 Calendar</button>
+        <button data-v="onthisday">🕰 On this day <span class="pro-tag">Pro</span></button>
+        <button data-v="photos">🖼 Photos</button>
+        <button data-v="stats">📊 Insights <span class="pro-tag">Pro</span></button>
+      </div>
+      <div class="streak" id="streak"></div>
+      <h3>Tags</h3>
+      <div class="tags" id="tagList"></div>
+      <h3>Moods</h3>
+      <div class="tags" id="moodList"></div>
+    </nav>
+    <section class="main-col" id="mainCol"></section>
+  </main>
+
+  <dialog id="pinDlg" class="dlg">
+    <h2>PIN lock</h2>
+    <p class="muted" id="pinInfo">Ask for a PIN when Inkwell opens and after it has been idle.</p>
+    <label class="field">New PIN (4–8 digits)<input id="pin1" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password"></label>
+    <label class="field">Repeat PIN<input id="pin2" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password"></label>
+    <label class="field">Lock again after
+      <select id="idleSel"><option value="1">1 minute idle</option><option value="5" selected>5 minutes idle</option><option value="15">15 minutes idle</option><option value="60">1 hour idle</option><option value="0">Only when Inkwell opens</option></select>
+    </label>
+    <p class="hint">Inkwell cannot recover a forgotten PIN. Keep a backup – a restored backup does not include the PIN.</p>
+    <div class="row-btns"><button id="pinSave" class="primary">Save PIN</button><button id="pinOff" class="ghost danger">Turn PIN off</button><button id="pinCancel" class="ghost">Cancel</button></div>
+  </dialog>
+
+  <dialog id="themeDlg" class="dlg">
+    <h2>Paper &amp; font</h2>
+    <label class="field">Paper<select id="paperSel"><option value="cream">Cream</option><option value="white">White</option><option value="sepia">Sepia ★</option><option value="night">Night ★</option></select></label>
+    <label class="field">Writing font<select id="fontSel"><option value="serif">Georgia (serif)</option><option value="sans">Segoe UI (sans)</option><option value="hand">Handwriting ★</option><option value="mono">Typewriter ★</option></select></label>
+    <label class="field">Text size<select id="sizeSel"><option value="16">Small</option><option value="18" selected>Medium</option><option value="21">Large</option></select></label>
+    <div class="row-btns"><button id="themeClose" class="primary">Done</button></div>
+  </dialog>
+
+  <dialog id="printDlg" class="dlg">
+    <h2>📖 Print your journal</h2>
+    <p class="muted">Print it on paper or choose “Save as PDF” to keep a beautiful copy.</p>
+    <label class="field">Book title<input id="bookTitle"></label>
+    <div class="two"><label class="field">From<input id="bookFrom" type="date"></label><label class="field">To<input id="bookTo" type="date"></label></div>
+    <label class="check"><input type="checkbox" id="bookPhotos" checked> Include photos</label>
+    <label class="check"><input type="checkbox" id="bookFavs"> Only favourite entries ★</label>
+    <div class="row-btns"><button id="bookGo" class="primary">Print / Save as PDF</button><button id="bookCancel" class="ghost">Cancel</button></div>
+  </dialog>
+
+  <dialog id="promptDlg" class="dlg wide">
+    <h2>Writing ideas</h2>
+    <div class="ptabs"><button data-p="prompts" class="on">💡 Prompts</button><button data-p="templates">🧾 Templates <span class="pro-tag">Pro</span></button></div>
+    <div id="promptBody" class="prompt-list"></div>
+    <div class="row-btns"><button id="promptShuffle" class="ghost">🔀 Shuffle</button><button id="promptClose" class="ghost">Close</button></div>
+  </dialog>
+
+  <dialog id="photoDlg" class="dlg photo-dlg">
+    <img id="photoBig" alt="">
+    <div class="row-btns"><button id="photoOpen" class="ghost">Open entry</button><button id="photoClose" class="ghost">Close</button></div>
+  </dialog>
+
+  <dialog id="proDialog" class="dlg">
+    <h2>Inkwell Pro</h2>
+    <p class="muted">One-time purchase. Yours forever on this Microsoft account – no subscription. Popular diary apps charge yearly or around $20.</p>
+    <ul class="pro-list">
+      <li><strong>Unlimited photos</strong> <span class="muted">(Free: 1 photo per entry)</span></li>
+      <li><strong>On this day</strong> – what you wrote 1, 2, 5 years ago</li>
+      <li><strong>Insights</strong> – streaks, mood chart, year in pixels, top tags</li>
+      <li><strong>Print your journal as a book</strong> or PDF, Word export</li>
+      <li><strong>Several journals</strong> – personal, travel, dreams, gratitude</li>
+      <li><strong>Templates</strong>, sepia &amp; night paper, handwriting and typewriter fonts</li>
+    </ul>
+    <p id="proMsg" class="pro-msg" hidden></p>
+    <p id="trialInfo" class="pro-msg" hidden></p>
+    <div class="row-btns">
+      <button id="trialBtn" class="ghost" hidden>Try every Pro feature free for 7 days</button>
+      <button id="buyBtn" class="primary">Unlock Pro</button>
+      <button id="restoreBtn" class="ghost">Restore purchase</button>
+      <button id="closePro" class="ghost">Not now</button>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+  <div id="printArea"></div>
+  <script src="prompts.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
