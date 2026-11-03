@@ -233,3 +233,7 @@ body.locked .pane, body.locked .topbar { visibility: hidden; }
   .two-panels { grid-template-columns: 1fr; }
   .main-col { padding: 14px; }
 }
+
+/* feedback note */
+.feedback { color: var(--muted); font-size: 12px; line-height: 1.45; margin: 12px 0 0; overflow-wrap: anywhere; }
+.feedback a { color: inherit; text-decoration: underline; }

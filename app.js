@@ -24,17 +24,33 @@ const PRO_IDS = [PRO_SKU];
 let STORE_URL = 'https://apps.microsoft.com/detail/9MWPS9LMSNGH';
 let proAvailable = false, proSku = PRO_SKU, isPro = false;
 proAvailable = true; // owner's rule: Pro is never free – free limits apply everywhere (website, Store, offline) until Pro is bought
-try { isPro = localStorage.getItem('inkwell-pro') === '1'; } catch (_) {}
+// the cached Pro flag is never trusted on the website (nothing can be bought there) and in the Store app only for 30 days
+// after the Store last confirmed the purchase (offline buyers stay Pro; after that the Store is asked again)
+const HAS_STORE = typeof window !== 'undefined' && 'getDigitalGoodsService' in window;
+const PRO_OK_MS = 30 * 864e5;
+function cachedPro() {
+  try {
+    if (!HAS_STORE || localStorage.getItem('inkwell-pro') !== '1') return false;
+    const raw = localStorage.getItem('inkwell-pro-ok');
+    if (raw == null) { localStorage.setItem('inkwell-pro-ok', String(Date.now())); return true; } // a buyer from before this check counts as confirmed now, once
+    const ok = Number(raw);
+    return ok > 0 && ok <= Date.now() + 864e5 && Date.now() - ok < PRO_OK_MS;
+  } catch (_) { return false; }
+}
+function rememberPro(owned) { try { if (owned) { localStorage.setItem('inkwell-pro', '1'); localStorage.setItem('inkwell-pro-ok', String(Date.now())); } else { localStorage.removeItem('inkwell-pro'); localStorage.removeItem('inkwell-pro-ok'); } } catch (_) {} }
+isPro = cachedPro();
 const TRIAL_DAYS = 7;
 let trialStart = 0;
-try { trialStart = Number(localStorage.getItem('inkwell-trial')) || 0; } catch (_) {}
+// a trial start in the future, NaN or garbage counts as an ENDED trial (1 = long ago); missing = never started
+const trialVal = (v) => { if (v == null) return 0; const n = Number(v); return n > 0 && n <= Date.now() ? n : 1; };
+try { trialStart = trialVal(localStorage.getItem('inkwell-trial')); } catch (_) {}
 const trialLeft = () => (trialStart ? Math.max(0, Math.ceil((trialStart + TRIAL_DAYS * DAY - Date.now()) / DAY)) : 0);
 const trialActive = () => trialLeft() > 0;
 const unlocked = () => isPro || !proAvailable || trialActive();
 const FREE_DOCS = 1;
 async function loadTrial() {
-  const t = await dbGet('trial').catch(() => 0);
-  trialStart = Math.max(trialStart, Number(t) || 0);
+  const t = await dbGet('trial').catch(() => undefined);
+  trialStart = Math.max(trialStart, trialVal(t)); // clearing only one of the two stores does not restart the trial
   if (trialStart) { try { localStorage.setItem('inkwell-trial', String(trialStart)); } catch (_) {} dbSet('trial', trialStart).catch(() => {}); }
 }
 async function startTrial() {
@@ -51,7 +67,6 @@ async function billing() {
 }
 function setPro(v) {
   isPro = v;
-  try { localStorage.setItem('inkwell-pro', v ? '1' : '0'); } catch (_) {}
   const b = $('proBtn');
   b.textContent = proLabel();
   b.classList.toggle('is-pro', v || trialActive());
@@ -74,7 +89,7 @@ async function checkPro() {
     if (details[0]) { proSku = details[0].itemId; if (!PRO_IDS.includes(proSku)) PRO_IDS.push(proSku); }
     const list = await svc.listPurchases();
     const owned = list.some((p) => PRO_IDS.includes(p.itemId));
-    if (owned || details.length) { setPro(owned); return owned; }
+    if (owned || details.length) { rememberPro(owned); setPro(owned); return owned; }
     setPro(isPro); // Store did not answer (offline): keep what we knew
     return isPro;
   } catch (_) { return isPro; }
@@ -439,6 +454,7 @@ async function shrink(file) {
   return new Promise((res) => c.toBlob((b) => res(b || file), 'image/jpeg', 0.86));
 }
 function addPhotos(e) {
+  if (journalNeedsPro()) return;
   if (!unlocked() && e.photos.length >= 1) { needsPro('The free version keeps 1 photo per entry. Inkwell Pro adds as many photos as you like.'); return; }
   const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = unlocked();
   inp.onchange = async () => {
@@ -566,6 +582,7 @@ function fillPrompts() {
 }
 async function usePrompt(text, isTpl) {
   $('promptDlg').close();
+  if (view === 'edit' && byId(editId) && journalNeedsPro()) return;
   if ((view !== 'edit' || !byId(editId)) && !newEntry()) return;
   if (readMode) { readMode = false; renderEditor($('mainCol')); }
   insertText(isTpl ? text : `> ${text}\n\n`);
@@ -652,6 +669,7 @@ function openPrint() {
   $('menu').hidden = true; $('printDlg').showModal();
 }
 async function printBook() {
+  if (needsPro('Print your journal as a beautiful book or save it as a PDF with Inkwell Pro.')) { $('printDlg').close(); return; }
   const from = $('bookFrom').value || '0000', to = $('bookTo').value || '9999';
   let list = jEntries().filter((e) => e.date >= from && e.date <= to && !isEmpty(e)).sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
   if ($('bookFavs').checked) list = list.filter((e) => e.fav);
