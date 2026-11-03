@@ -23,7 +23,7 @@ const PRO_SKU = 'inkwell_pro';
 const PRO_IDS = [PRO_SKU];
 let STORE_URL = 'https://apps.microsoft.com/detail/9MWPS9LMSNGH';
 let proAvailable = false, proSku = PRO_SKU, isPro = false;
-try { if ('getDigitalGoodsService' in window && localStorage.getItem('inkwell-proavail') === '1') proAvailable = true; } catch (_) {} // keep Pro limits when offline
+proAvailable = true; // owner's rule: Pro is never free – free limits apply everywhere (website, Store, offline) until Pro is bought
 try { isPro = localStorage.getItem('inkwell-pro') === '1'; } catch (_) {}
 const TRIAL_DAYS = 7;
 let trialStart = 0;
@@ -71,7 +71,6 @@ async function checkPro() {
   if (!svc) return false;
   try {
     const details = await svc.getDetails(PRO_IDS).catch(() => []);
-    if (details.length) { proAvailable = true; try { localStorage.setItem('inkwell-proavail', '1'); } catch (_) {} }
     if (details[0]) { proSku = details[0].itemId; if (!PRO_IDS.includes(proSku)) PRO_IDS.push(proSku); }
     const list = await svc.listPurchases();
     const owned = list.some((p) => PRO_IDS.includes(p.itemId));
@@ -92,6 +91,7 @@ async function openPro(reason) {
     $('restoreBtn').hidden = false;
     try {
       const [d] = await svc.getDetails([proSku]);
+      if (!d) proMessage((reason ? reason + ' ' : '') + 'Pro is being added to the Microsoft Store and will be on sale very soon – please check again in a day or two.');
       const price = d && d.price ? new Intl.NumberFormat(undefined, { style: 'currency', currency: d.price.currency }).format(Number(d.price.value)) : '';
       $('buyBtn').textContent = price ? `Unlock Pro – ${price}` : 'Unlock Pro';
     } catch (_) { $('buyBtn').textContent = 'Unlock Pro'; }
@@ -115,6 +115,8 @@ async function buyPro() {
   if (await checkProAfterBuy()) { proMessage('Thank you! Pro is unlocked. ★'); setTimeout(() => $('proDialog').close(), 1500); }
 }
 const needsPro = (why) => { if (unlocked()) return false; openPro(why); return true; };
+// journals beyond the free one (from the trial) can be read, exported, backed up or deleted; writing in them needs Pro
+const journalNeedsPro = () => !unlocked() && journals.findIndex((j) => j.id === curJ) >= FREE_DOCS && needsPro('The free version keeps one journal. You can read, export, back up or delete this one – Pro lets you keep writing in every journal.');
 
 // ---------- generic IndexedDB helpers ----------
 async function storeAll(name) { const d = await db(); return new Promise((res, rej) => { const q = d.transaction(name).objectStore(name).getAll(); q.onsuccess = () => res(q.result || []); q.onerror = () => rej(q.error); }); }
@@ -227,6 +229,7 @@ async function deleteJournal() {
 
 // ---------- entries ----------
 function newEntry(date) {
+  if (journalNeedsPro()) return null;
   const e = { id: uid(), j: curJ, date: date || todayStr(), time: nowTime(), title: '', body: '', mood: 0, fav: false, photos: [], created: Date.now(), updated: Date.now() };
   entries.push(e);
   openEntry(e.id, false);
@@ -389,13 +392,13 @@ function renderEditor(m) {
     }
   });
   $('edTitle').addEventListener('input', (ev) => { e.title = ev.target.value; saveSoon(e); });
-  $('edDate').addEventListener('change', (ev) => { if (ev.target.value) { e.date = ev.target.value; saveSoon(e); m.querySelector('.ed-date').textContent = longDate(e.date); renderSide(); } });
-  $('edTime').addEventListener('change', (ev) => { e.time = ev.target.value; saveSoon(e); });
-  $('edFav').onclick = () => { e.fav = !e.fav; saveSoon(e); const b = $('edFav'); b.textContent = e.fav ? '★' : '☆'; b.classList.toggle('on', e.fav); };
-  $('edRead').onclick = () => { readMode = !readMode; saveEntry(e); renderEditor(m); };
+  $('edDate').addEventListener('change', (ev) => { if (journalNeedsPro()) { ev.target.value = e.date; return; } if (ev.target.value) { e.date = ev.target.value; saveSoon(e); m.querySelector('.ed-date').textContent = longDate(e.date); renderSide(); } });
+  $('edTime').addEventListener('change', (ev) => { if (journalNeedsPro()) { ev.target.value = e.time || ''; return; } e.time = ev.target.value; saveSoon(e); });
+  $('edFav').onclick = () => { if (journalNeedsPro()) return; e.fav = !e.fav; saveSoon(e); const b = $('edFav'); b.textContent = e.fav ? '★' : '☆'; b.classList.toggle('on', e.fav); };
+  $('edRead').onclick = () => { if (readMode && journalNeedsPro()) return; readMode = !readMode; saveEntry(e); renderEditor(m); };
   $('edBack').onclick = () => go('timeline');
   $('edDel').onclick = async () => { if (isEmpty(e) || confirm('Delete this entry? This cannot be undone.')) { await removeEntry(e); editId = null; view = 'timeline'; render(); } };
-  $('edMoods').onclick = (ev) => { const b = ev.target.closest('[data-m]'); if (!b) return; const v = Number(b.dataset.m); e.mood = e.mood === v ? 0 : v; saveSoon(e); m.querySelectorAll('#edMoods [data-m]').forEach((x) => x.classList.toggle('on', Number(x.dataset.m) === e.mood)); renderSide(); };
+  $('edMoods').onclick = (ev) => { const b = ev.target.closest('[data-m]'); if (!b || journalNeedsPro()) return; const v = Number(b.dataset.m); e.mood = e.mood === v ? 0 : v; saveSoon(e); m.querySelectorAll('#edMoods [data-m]').forEach((x) => x.classList.toggle('on', Number(x.dataset.m) === e.mood)); renderSide(); };
   m.querySelector('.ed-tools').onclick = (ev) => { const b = ev.target.closest('[data-f]'); if (b) fmt(b.dataset.f); };
   $('edIdeas').onclick = () => openPrompts('prompts');
   $('edPhoto').onclick = () => addPhotos(e);
@@ -563,7 +566,7 @@ function fillPrompts() {
 }
 async function usePrompt(text, isTpl) {
   $('promptDlg').close();
-  if (view !== 'edit' || !byId(editId)) newEntry();
+  if ((view !== 'edit' || !byId(editId)) && !newEntry()) return;
   if (readMode) { readMode = false; renderEditor($('mainCol')); }
   insertText(isTpl ? text : `> ${text}\n\n`);
 }
@@ -699,6 +702,15 @@ async function backup() {
 async function restore(file) {
   let data; try { data = JSON.parse(await file.text()); } catch (_) { toast('That file is not an Inkwell backup'); return; }
   if (!data || data.app !== 'inkwell' || !Array.isArray(data.entries)) { toast('That file is not an Inkwell backup'); return; }
+  if (!unlocked()) {
+    const add = (data.journals || []).filter((j) => !journals.some((x) => x.id === String(j.id))).length;
+    const tooMany = add > 0 && journals.length + add > FREE_DOCS;
+    const many = data.entries.filter((e) => e && Array.isArray(e.photos) && e.photos.length > 1).length;
+    if (tooMany || many) {
+      openPro(`This backup holds ${tooMany ? `${(data.journals || []).length} journals` : ''}${tooMany && many ? ' and ' : ''}${many ? `${many} entr${many === 1 ? 'y' : 'ies'} with more than one photo` : ''}. The free version keeps one journal and 1 photo per entry – Pro opens all of it. The backup file is unchanged, so nothing is lost.`);
+      return;
+    }
+  }
   if (!confirm(`Restore ${data.entries.length} entries and ${(data.photos || []).length} photos from this backup? Entries you already have are kept; entries with the same ID are replaced by the backup.`)) return;
   for (const j of data.journals || []) if (!journals.some((x) => x.id === j.id)) journals.push({ id: String(j.id), name: String(j.name || 'Journal').slice(0, 60) });
   await dbSet('journals', journals);
