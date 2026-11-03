@@ -23,6 +23,7 @@ const PRO_SKU = 'inkwell_pro';
 const PRO_IDS = [PRO_SKU];
 let STORE_URL = 'https://apps.microsoft.com/detail/9MWPS9LMSNGH';
 let proAvailable = false, proSku = PRO_SKU, isPro = false;
+try { if ('getDigitalGoodsService' in window && localStorage.getItem('inkwell-proavail') === '1') proAvailable = true; } catch (_) {} // keep Pro limits when offline
 try { isPro = localStorage.getItem('inkwell-pro') === '1'; } catch (_) {}
 const TRIAL_DAYS = 7;
 let trialStart = 0;
@@ -57,17 +58,26 @@ function setPro(v) {
   b.hidden = !proAvailable && !v;
   if (booted) render();
 }
+async function checkProAfterBuy() {
+  for (let i = 0; i < 6; i++) {
+    if (await checkPro()) return true;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  proMessage('Thank you! If Pro is not unlocked within a minute, click “Restore purchase”.');
+  return false;
+}
 async function checkPro() {
   const svc = await billing();
   if (!svc) return false;
   try {
     const details = await svc.getDetails(PRO_IDS).catch(() => []);
-    proAvailable = details.length > 0;
+    if (details.length) { proAvailable = true; try { localStorage.setItem('inkwell-proavail', '1'); } catch (_) {} }
     if (details[0]) { proSku = details[0].itemId; if (!PRO_IDS.includes(proSku)) PRO_IDS.push(proSku); }
     const list = await svc.listPurchases();
     const owned = list.some((p) => PRO_IDS.includes(p.itemId));
-    setPro(owned);
-    return owned;
+    if (owned || details.length) { setPro(owned); return owned; }
+    setPro(isPro); // Store did not answer (offline): keep what we knew
+    return isPro;
   } catch (_) { return isPro; }
 }
 function proMessage(text) { const m = $('proMsg'); m.hidden = !text; m.textContent = text || ''; }
@@ -102,7 +112,7 @@ async function buyPro() {
     proMessage('Purchase could not be completed: ' + (e.message || e));
     return;
   }
-  if (await checkPro()) { proMessage('Thank you! Pro is unlocked. ★'); setTimeout(() => $('proDialog').close(), 1500); }
+  if (await checkProAfterBuy()) { proMessage('Thank you! Pro is unlocked. ★'); setTimeout(() => $('proDialog').close(), 1500); }
 }
 const needsPro = (why) => { if (unlocked()) return false; openPro(why); return true; };
 
@@ -294,7 +304,7 @@ function card(e) {
   const ex = plain(e.body).slice(0, 220);
   const d = pdate(e.date);
   const m = MOODS[e.mood];
-  return `<article class="card paper" data-open="${e.id}">
+  return `<article class="card paper" data-open="${esc(e.id)}">
     <div class="cdate"><b>${d.getDate()}</b><span>${d.toLocaleDateString(undefined, { weekday: 'short' })}</span></div>
     <div class="cbody"><h3>${e.fav ? '<span class="star">★</span> ' : ''}${esc(t)}</h3><p>${esc(ex)}</p>
       <div class="cmeta">${m ? `<span title="${m.n}">${m.e}</span>` : ''}<span>${esc(e.time || '')}</span>${(e.tags || []).slice(0, 4).map((x) => `<span class="tg">#${esc(x)}</span>`).join('')}${e.photos.length ? `<span>📷 ${e.photos.length}</span>` : ''}<span>${words(e.body)} word${words(e.body) === 1 ? '' : 's'}</span></div></div>
@@ -339,7 +349,7 @@ function renderEditor(m) {
   m.innerHTML = `<div class="ed paper">
     <div class="ed-top">
       <button id="edBack" class="ghost">← All entries</button>
-      <input type="date" id="edDate" value="${e.date}" title="Date">
+      <input type="date" id="edDate" value="${esc(e.date)}" title="Date">
       <input type="time" id="edTime" value="${esc(e.time || '')}" title="Time">
       <span class="grow"></span><span id="edSaved" class="muted"></span>
       <button id="edFav" class="ghost${e.fav ? ' on' : ''}" title="Favourite">${e.fav ? '★' : '☆'}</button>
@@ -444,7 +454,7 @@ async function showPhoto(id, entryId) { photoEntry = entryId; $('photoBig').src 
 function renderPhotos(m) {
   const list = jEntries().filter((e) => e.photos.length).sort((a, b) => sortKey(b).localeCompare(sortKey(a)));
   const n = list.reduce((s, e) => s + e.photos.length, 0);
-  m.innerHTML = `<h1 class="vh">🖼 Photos <span class="muted">${n}</span></h1>` + (n ? `<div class="pgrid">${list.map((e) => e.photos.map((p) => `<figure class="ph-wrap" data-big="${esc(p)}" data-e="${e.id}"><img data-ph="${esc(p)}" alt=""><figcaption>${esc(pdate(e.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }))}</figcaption></figure>`).join('')).join('')}</div>` : '<p class="empty">Add photos to your entries with 📷 Add photo – they all show up here.</p>');
+  m.innerHTML = `<h1 class="vh">🖼 Photos <span class="muted">${n}</span></h1>` + (n ? `<div class="pgrid">${list.map((e) => e.photos.map((p) => `<figure class="ph-wrap" data-big="${esc(p)}" data-e="${esc(e.id)}"><img data-ph="${esc(p)}" alt=""><figcaption>${esc(pdate(e.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }))}</figcaption></figure>`).join('')).join('')}</div>` : '<p class="empty">Add photos to your entries with 📷 Add photo – they all show up here.</p>');
   hydrate(m);
 }
 
@@ -560,6 +570,8 @@ async function usePrompt(text, isTpl) {
 
 // ---------- PIN lock ----------
 let pinCfg = null, locked = false, typed = '', fails = 0, waitUntil = 0, lastAct = Date.now(), hiddenAt = 0;
+try { const w = JSON.parse(localStorage.getItem('inkwell-pinwait') || '{}'); fails = Number(w.fails) || 0; waitUntil = Math.min(Number(w.until) || 0, Date.now() + 30000); } catch (_) {} // reloading must not reset the wrong-PIN wait
+const keepPinWait = () => { try { if (fails || waitUntil > Date.now()) localStorage.setItem('inkwell-pinwait', JSON.stringify({ fails, until: waitUntil })); else localStorage.removeItem('inkwell-pinwait'); } catch (_) {} };
 async function hashPin(pin, salt) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salt + ':' + pin)); return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join(''); }
 function lockNow() {
   if (!pinCfg || locked) return;
@@ -569,14 +581,15 @@ function lockNow() {
 }
 function drawDots() { const n = Math.max(4, typed.length); $('pinDots').innerHTML = [...Array(n)].map((_, i) => `<i class="${i < typed.length ? 'on' : ''}"></i>`).join(''); }
 async function tryPin() {
-  if (Date.now() < waitUntil) { $('lockMsg').textContent = `Too many tries – wait ${Math.ceil((waitUntil - Date.now()) / 1000)} s`; return; }
+  if (Date.now() < waitUntil) { typed = ''; drawDots(); $('lockMsg').textContent = `Too many tries – wait ${Math.ceil((waitUntil - Date.now()) / 1000)} s`; return; }
   if (typed.length < 4) return;
   if ((await hashPin(typed, pinCfg.salt)) === pinCfg.hash) {
-    locked = false; fails = 0; typed = ''; lastAct = Date.now(); $('lock').hidden = true; document.body.classList.remove('locked'); return;
+    locked = false; fails = 0; waitUntil = 0; keepPinWait(); typed = ''; lastAct = Date.now(); $('lock').hidden = true; document.body.classList.remove('locked'); return;
   }
   fails++; typed = ''; drawDots();
   if (fails >= 5) { waitUntil = Date.now() + 30000; fails = 0; $('lockMsg').textContent = 'Too many tries – wait 30 s'; }
   else $('lockMsg').textContent = 'Wrong PIN – try again';
+  keepPinWait();
   const b = $('pinDots'); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake');
 }
 function pinKey(k) {
@@ -659,7 +672,7 @@ function txtExport() {
   if (!list.length) { toast('Nothing to export yet'); return; }
   const j = journals.find((x) => x.id === curJ);
   const out = list.map((e) => [longDate(e.date) + (e.time ? '  ' + e.time : '') + (e.mood ? '  · mood: ' + MOODS[e.mood].n : '') + (e.fav ? '  ★' : ''), e.title ? e.title.toUpperCase() : '', '', e.body.trim(), e.photos.length ? `[${e.photos.length} photo${e.photos.length > 1 ? 's' : ''}]` : ''].filter((x, i) => x || i === 2).join('\n')).join('\n\n' + '–'.repeat(40) + '\n\n');
-  download(`${(j ? j.name : 'diary').replace(/[^\w -]+/g, '')} ${todayStr()}.txt`, new Blob(['﻿' + out], { type: 'text/plain;charset=utf-8' }));
+  download(`${(j ? j.name : 'diary').replace(/[^\p{L}\p{N} _-]+/gu, '')} ${todayStr()}.txt`, new Blob(['﻿' + out], { type: 'text/plain;charset=utf-8' }));
   $('menu').hidden = true; toast('📝 Text file saved to Downloads');
 }
 function docExport() {
@@ -669,7 +682,7 @@ function docExport() {
   const j = journals.find((x) => x.id === curJ);
   const body = list.map((e) => `<p style="color:#5b3fa0;font-size:10pt;margin-bottom:0">${esc(longDate(e.date))}${e.time ? ' · ' + esc(e.time) : ''}${e.mood ? ' · ' + MOODS[e.mood].n : ''}</p>${e.title ? `<h2>${esc(e.title)}</h2>` : ''}${md(e.body)}<hr>`).join('');
   const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><title>${esc(j ? j.name : 'Diary')}</title><style>body{font-family:Georgia,serif;font-size:12pt;line-height:1.5}h1{color:#5b3fa0}h2{font-size:15pt;margin:4pt 0}blockquote{color:#555;font-style:italic;margin-left:18pt}</style></head><body><h1>${esc(j ? j.name : 'Diary')}</h1>${body}</body></html>`;
-  download(`${(j ? j.name : 'diary').replace(/[^\w -]+/g, '')} ${todayStr()}.doc`, new Blob(['﻿' + html], { type: 'application/msword' }));
+  download(`${(j ? j.name : 'diary').replace(/[^\p{L}\p{N} _-]+/gu, '')} ${todayStr()}.doc`, new Blob(['﻿' + html], { type: 'application/msword' }));
   $('menu').hidden = true; toast('📄 Word file saved to Downloads');
 }
 
