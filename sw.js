@@ -1,5 +1,5 @@
-const CACHE = 'inkwell-v8';
-const ASSETS = ['./', 'index.html', 'help.html', 'privacy.html', 'style.css', 'prompts.js', 'app.js', 'manifest.json', 'why.html', 'icon-192.png', 'icon-512.png', 'icon-maskable.png'];
+const CACHE = 'inkwell-v9';
+const ASSETS = ['./', 'index.html', 'help.html', 'privacy.html', 'style.css', 'prompts.js', 'app.js', 'rate.js', 'manifest.json', 'why.html', 'icon-192.png', 'icon-512.png', 'icon-maskable.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k.startsWith('inkwell-')).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {
